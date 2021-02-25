@@ -17,13 +17,14 @@ def classify(current, future):
 
 
 def preprocess_df(df):
+    #! scale and shuffle df
     df = df.drop('future', 1)
     for col in df.columns:
         if col != 'target':
             df[col] = df[col].pct_change()
             df.dropna(inplace=True)
             df[col] = preprocessing.scale(df[col].values)
-    df.dropna(inplace=True)
+    df.dropna(inplace=True)  # ? why? just in case!
 
     sequential_data = []
     prev_days = deque(maxlen=SEQ_LEN)
@@ -33,6 +34,36 @@ def preprocess_df(df):
             sequential_data.append([np.array(prev_days), i[-1]])
 
     random.shuffle(sequential_data)
+
+    #! balance df
+    buys = []
+    sells = []
+
+    for seq, target in sequential_data:
+        if target == 0:
+            sells.append([seq, target])
+        elif target == 1:
+            buys.append([seq, target])
+
+    random.shuffle(buys)
+    random.shuffle(sells)  # ? shuffle for good measure!
+
+    lower = min(len(buys), len(sells))
+    buys = buys[:lower]
+    sells = sells[:lower]
+
+    sequential_data = buys + sells
+    random.shuffle(sequential_data)  # ? extract buys from sells
+
+    #! create ds for training (x, y)
+    X = []
+    y = []
+
+    for seq, target in sequential_data:
+        X.append(seq)
+        y.append(target)
+
+    return np.array(X), y
 
 
 main_df = pd.DataFrame()
@@ -72,7 +103,13 @@ times = sorted(main_df.index.values)
 last_5_pct = times[-int(0.05 * len(times))]
 
 # * seperate out the out-of-sample-data
-validdation_main_df = main_df[main_df.index >= last_5_pct]
+validation_main_df = main_df[main_df.index >= last_5_pct]
 main_df = main_df[main_df.index < last_5_pct]
 
-preprocess_df(main_df)
+train_x, train_y = preprocess_df(main_df)
+validation_x, validation_y = preprocess_df(validation_main_df)
+
+print(f"train data: {len(train_x)} validation: {len(validation_x)}")
+print(f"Dont buys: {train_y.count(0)}, buys: {train_y.count(1)}")
+print(
+    f"VALIDATION Dont buys: {validation_y.count(0)}, buys: {validation_y.count(1)}")
